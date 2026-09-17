@@ -269,7 +269,7 @@ func ClaimsFromContext(ctx context.Context) *Claims {
 
 // parseRSAPublicKey parsea una clave pública RSA desde módulo y exponente (base64url).
 func parseRSAPublicKey(n, e string) (*rsa.PublicKey, error) {
-	// La解析 de claves JWT usa bytes en formato big-endian.
+	// El parseo de claves JWT usa bytes en formato big-endian.
 	pubKey := &rsa.PublicKey{}
 
 	// Decodificar módulo.

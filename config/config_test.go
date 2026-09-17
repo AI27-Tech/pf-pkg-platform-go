@@ -69,6 +69,28 @@ func TestLoad_ValoresPorDefecto(t *testing.T) {
 	}
 }
 
+func TestLoad_SinRequeridas_UsaOpcionales(t *testing.T) {
+	// El sustrato no impone dependencias: Load() sin requeridas y sin URLs de
+	// backing services arranca con defaults, dejando las URLs vacías.
+	for _, k := range []string{"DATABASE_URL", "REDIS_URL", "JWKS_URL", "OTEL_EXPORTER_URL", "SERVICE_NAME", "HTTP_ADDR"} {
+		os.Unsetenv(k)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() sin requeridas no debe fallar: %v", err)
+	}
+	if cfg.DatabaseURL != "" || cfg.RedisURL != "" || cfg.JWKSURL != "" || cfg.OtelExporterURL != "" {
+		t.Errorf("las URLs opcionales deben quedar vacías si no se declaran, got %+v", cfg)
+	}
+	if cfg.HTTPAddr != ":8080" {
+		t.Errorf("HTTPAddr default = %q, se esperaba :8080", cfg.HTTPAddr)
+	}
+	if cfg.ServiceName != "unknown" {
+		t.Errorf("ServiceName default = %q, se esperaba unknown", cfg.ServiceName)
+	}
+}
+
 func TestGetEnvInt(t *testing.T) {
 	os.Setenv("TEST_INT", "42")
 	defer os.Unsetenv("TEST_INT")

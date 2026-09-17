@@ -39,7 +39,7 @@ platform-go/
 │
 ├── health/        ← Handlers /health y /ready
 │                     /health = liveness (proceso vivo, siempre 200)
-│                     /readiness = readiness (pools OK, dependencias OK)
+│                     /ready = readiness (pools OK, dependencias OK)
 │                     Cada servicio registra sus checks de readiness.
 │
 ├── pgxpool/       ← Pool de Postgres por rol
@@ -156,4 +156,42 @@ go vet ./...      # sin warnings
 go test ./...     # tests unitarios
 ```
 
-Para tests de integración se necesita Postgres y Redis corriendo (ver sección de tests de integración en el spec E0-T1).
+Para tests de integración se necesita Postgres corriendo. Los tests que lo
+requieren se **saltan** (`t.Skip`) cuando `PLATFORM_GO_TEST_DB` no está
+definida, así que `go test ./...` pasa sin base de datos (p. ej. CI sin BD).
+Para ejecutarlos, apunta la variable a un DSN con privilegios de `CREATE ROLE`
+y `CREATE SCHEMA` (crean roles/schemas efímeros que se limpian al terminar):
+
+```bash
+PLATFORM_GO_TEST_DB="postgres:///postgres" go test ./...
+```
+
+Cubren: aislamiento por schema (`permission denied for schema`), supervivencia
+de la outbox a un reinicio, y propagación de traza HTTP → outbox.
+
+## Publicar un evento (outbox)
+
+El `Publisher` inserta la **capa de dominio del sobre** —los mismos campos que
+`Sobre` en `pf-pkg-contracts`— en la tabla `outbox` del schema del llamador,
+dentro de su transacción. El worker (E0-T10) la drena y, tras el acuse de SNS,
+marca la fila como publicada (ADR 29).
+
+```go
+pub := outbox.NewPublisher()
+
+tx, _ := pool.Begin(ctx)
+err := pub.Publish(ctx, tx, outbox.Event{
+    Tipo:       "viaje.creado", // en el registro de tipos del contrato
+    AgregadoID: viajeID,        // clave de orden (MessageGroupId); obligatoria
+    Payload:    evento,         // se serializa a JSONB
+    // EventoID (UUID), Version (1), Sensibilidad (amplia) y OcurridoEn (now)
+    // se completan solos si se dejan vacíos.
+})
+if err != nil { tx.Rollback(ctx); return }
+tx.Commit(ctx) // el evento y el cambio de dominio se comprometen juntos (P17)
+```
+
+El contexto de traza activo se persiste en la columna `trace_context` de la
+fila, así que el trazo de la petición HTTP continúa hasta el evento. La tabla se
+crea con `outbox.OutboxDDL` desde las migraciones de cada módulo (este paquete
+no administra schemas).

@@ -10,10 +10,11 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Config contiene la configuración para la inicialización de OpenTelemetry.
@@ -70,6 +71,14 @@ func InitTracerProvider(ctx context.Context, cfg Config) (func(context.Context) 
 	)
 
 	otel.SetTracerProvider(tp)
+
+	// Establecer el propagador de contexto W3C (traceparent/tracestate), de modo
+	// que el contexto de traza cruce procesos: entra por HTTP, se propaga a la
+	// outbox y de ahí al bus. Sin esto, cada salto iniciaría una traza nueva.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 
 	return tp.Shutdown, nil
 }
