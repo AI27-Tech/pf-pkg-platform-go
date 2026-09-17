@@ -15,10 +15,10 @@ func bytesToBigInt(b []byte) *big.Int {
 }
 
 func bytesToInt(b []byte) int {
-	// RSA public exponents are small enough to fit in an int.
+	// Los exponentes públicos RSA son pequeños y caben en un int.
 	n := bytesToBigInt(b)
 	return int(n.Int64())
 }
 
-// Ensure rsa.PublicKey is used (it's imported but used in jwt.go).
+// Garantiza que rsa.PublicKey se considere usado (se usa en jwt.go).
 var _ *rsa.PublicKey
