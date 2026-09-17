@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 2026:09:17 11:16
+
+**Resumen:** Se terminó `platform-go` a la especificación E0-T1: se alineó la outbox con el sobre de contratos, se completó la propagación de OpenTelemetry hasta el evento, se agregó una plantilla `cmd/` copiable y se cubrió la Definición de Terminado con pruebas (aislamiento por schema, supervivencia de outbox, traza HTTP → outbox) más pruebas del verificador JWT.
+
+**Cambios:**
+- Outbox alineada con el `Sobre` de `pf-pkg-contracts`: `Event` ahora lleva `EventoID` (UUID autogenerado si falta), `Tipo`, `Version`, `AgregadoID` (clave de orden, obligatoria), `Sensibilidad` (amplia/restringida, default amplia), `OcurridoEn` (UTC) y `Payload`. Se agregó `outbox.OutboxDDL` con la tabla estándar (`evento_id` único, `trace_context` JSONB, `publicado`, índice parcial de pendientes). Se eliminó `PublishWithMetadata` (el sobre cubre la necesidad).
+- Propagación OpenTelemetry completa: `observability.InitTracerProvider` fija el propagador W3C global (`TraceContext`+`Baggage`); el servidor instrumenta el mux con `otelhttp` para iniciar span por petición; el `Publisher` persiste el contexto de traza del `ctx` en la columna `trace_context` y expone `TraceContextFromRow`/`SpanContextFromRow` para el worker.
+- Plantilla `cmd/ejemplo/api/main.go`: raíz de composición mínima copiable (config → observabilidad → servidor con `/health` y `/ready` → apagado ordenado).
+- Corrección de `config.Load`: las URLs de Postgres/Redis/JWKS/OTel pasan a ser **opcionales** en el `Config` base; cada módulo declara las obligatorias vía `requiredEnvVars`. Antes eran obligatorias siempre, lo que impedía arrancar un módulo mínimo.
+- Pruebas: `TestAislamientoPorSchema` (verifica `permission denied for schema`), `TestOutboxSobreviveReinicio`, `TestTraceRoundTrip`/`TestTraceSinSpan` y `TestTrazaHTTPHastaOutbox` (traza HTTP → outbox), y 11 pruebas del verificador JWT (`auth/jwt_test.go`: firma válida/ inválida, expirado, audiencia, `kid`, fail-closed, gracia, middleware, claims). Las de integración se saltan sin `PLATFORM_GO_TEST_DB`.
+- Helper de pruebas `internal/dbtest` para las pruebas que requieren Postgres.
+- Se corrigió un comentario corrupto en `auth/jwt.go` y se tradujeron comentarios de `auth/helpers.go`. README ampliado (outbox, pruebas de integración) y `/readiness` → `/ready`.
+- Dependencias: se agregaron `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` y `github.com/google/uuid` como directas; se mantuvo todo OpenTelemetry alineado en v1.46.
+
+**Archivos modificados:**
+- `outbox/publisher.go`, `outbox/otel.go`
+- `observability/otel.go`
+- `server/server.go`
+- `config/config.go`, `config/config_test.go`
+- `auth/jwt.go`, `auth/helpers.go`, `auth/jwt_test.go`
+- `cmd/ejemplo/api/main.go`
+- `internal/dbtest/dbtest.go`
+- `pgxpool/aislamiento_integration_test.go`
+- `outbox/publisher_integration_test.go`, `outbox/trace_test.go`, `outbox/trace_http_integration_test.go`
+- `README.md`
+- `go.mod`, `go.sum`
+
 ## 2026:09:17 12:30
 
 **Resumen:** Corrección de comentarios, docstrings y mensajes de error a español (México) para cumplir con `naming-conventions.md`.

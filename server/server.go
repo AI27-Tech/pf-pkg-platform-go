@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/AI27-Tech/pf-pkg-platform-go/health"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Server envuelve un http.Server con apagado ordenado y health checks.
@@ -60,9 +61,15 @@ func New(addr string, opts ...Option) *Server {
 	// Registrar rutas de health.
 	health.RegisterRoutes(s.mux, s.registry)
 
+	// Instrumentar el servidor con OpenTelemetry: cada petición entrante inicia
+	// (o continúa, vía traceparent) un span. Es el origen del trazo que luego se
+	// propaga a la outbox y al bus (E0-T1). El propagador global lo fija
+	// observability.InitTracerProvider.
+	handler := otelhttp.NewHandler(s.mux, "http.server")
+
 	s.httpServer = &http.Server{
 		Addr:         s.addr,
-		Handler:      s.mux,
+		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,

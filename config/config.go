@@ -38,32 +38,28 @@ type Config struct {
 }
 
 // Load lee las variables de entorno y devuelve un Config validado.
-// Devuelve un error con TODAS las variables faltantes en lugar de fallar en la primera.
+//
+// Filosofía: el sustrato no impone dependencias. Sólo `SERVICE_NAME` y
+// `HTTP_ADDR` tienen valor por defecto y siempre están presentes; las URLs de
+// Postgres, Redis, JWKS y OTel son OPCIONALES en el Config base, porque no todo
+// módulo las usa (p. ej. `catalogos` no usa Redis ni outbox). Cada módulo
+// declara las que SÍ necesita pasándolas en requiredEnvVars, y entonces su
+// ausencia es un error de arranque.
+//
+// Devuelve un error con TODAS las variables faltantes, no sólo la primera.
 func Load(requiredEnvVars ...string) (*Config, error) {
 	var missing []string
 
-	get := func(key, fallback string) string {
-		v := os.Getenv(key)
-		if v == "" {
-			if fallback != "" {
-				return fallback
-			}
-			missing = append(missing, key)
-			return ""
-		}
-		return v
-	}
-
 	cfg := &Config{
-		HTTPAddr:        get(EnvHTTPAddr, ":8080"),
-		DatabaseURL:     get(EnvDatabaseURL, ""),
-		RedisURL:        get(EnvRedisURL, ""),
-		JWKSURL:         get(EnvJWKSURL, ""),
-		OtelExporterURL: get(EnvOtelExporterURL, ""),
-		ServiceName:     get(EnvServiceName, "unknown"),
+		HTTPAddr:        getOrDefault(EnvHTTPAddr, ":8080"),
+		DatabaseURL:     os.Getenv(EnvDatabaseURL),
+		RedisURL:        os.Getenv(EnvRedisURL),
+		JWKSURL:         os.Getenv(EnvJWKSURL),
+		OtelExporterURL: os.Getenv(EnvOtelExporterURL),
+		ServiceName:     getOrDefault(EnvServiceName, "unknown"),
 	}
 
-	// Verificar variables de entorno adicionales requeridas por el llamador.
+	// El módulo declara qué variables son obligatorias para él.
 	for _, key := range requiredEnvVars {
 		if os.Getenv(key) == "" {
 			missing = append(missing, key)
@@ -75,6 +71,14 @@ func Load(requiredEnvVars ...string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// getOrDefault devuelve el valor de la env var o el fallback si está vacía.
+func getOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 // GetEnvInt lee una variable de entorno como entero.
