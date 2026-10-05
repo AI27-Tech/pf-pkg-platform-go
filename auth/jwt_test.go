@@ -101,8 +101,13 @@ func TestVerifyToken_Valido(t *testing.T) {
 	if claims.TenantID != "tenant-1" {
 		t.Errorf("TenantID = %q, se esperaba tenant-1", claims.TenantID)
 	}
-	if claims.Audiencia != testAud {
-		t.Errorf("Audiencia = %q, se esperaba %q", claims.Audiencia, testAud)
+	if claims.Audience != testAud {
+		t.Errorf("Audience = %q, se esperaba %q", claims.Audience, testAud)
+	}
+	// Sin claim personalizado "audiencia", se deriva del rol. El rol de prueba
+	// no es "cliente", así que la Audiencia de dominio debe ser Interno.
+	if claims.Audiencia != AudienciaInterno {
+		t.Errorf("Audiencia = %q, se esperaba Interno", claims.Audiencia)
 	}
 	if claims.SesionID != "sesion-1" {
 		t.Errorf("SesionID = %q, se esperaba sesion-1", claims.SesionID)
@@ -276,5 +281,153 @@ func TestMiddleware(t *testing.T) {
 func TestClaimsFromContext_Vacio(t *testing.T) {
 	if c := ClaimsFromContext(context.Background()); c != nil {
 		t.Errorf("sin claims en contexto debería devolver nil, got %+v", c)
+	}
+}
+
+// TestAudiencia_DesdeClaimPersonalizado: si el IdP emite el claim de dominio,
+// se usa tal cual, sin derivarlo del rol.
+func TestAudiencia_DesdeClaimPersonalizado(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+
+	claims := claimsBase()
+	claims["audiencia"] = "Cliente" // claim personalizado explícito
+	tok := firmarToken(t, key, testKid, claims)
+
+	got, err := v.VerifyToken(context.Background(), tok)
+	if err != nil {
+		t.Fatalf("verificar: %v", err)
+	}
+	if got.Audiencia != AudienciaCliente {
+		t.Errorf("Audiencia = %q, se esperaba Cliente (del claim)", got.Audiencia)
+	}
+}
+
+// TestAudiencia_DerivadaDelRolCliente: sin claim personalizado, el rol
+// "cliente" mapea a Audiencia Cliente; cualquier otro, a Interno (DEC-054).
+func TestAudiencia_DerivadaDelRolCliente(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+
+	claims := claimsBase()
+	claims["rol"] = "cliente"
+	tok := firmarToken(t, key, testKid, claims)
+
+	got, err := v.VerifyToken(context.Background(), tok)
+	if err != nil {
+		t.Fatalf("verificar: %v", err)
+	}
+	if got.Audiencia != AudienciaCliente {
+		t.Errorf("Audiencia = %q, se esperaba Cliente (derivada del rol)", got.Audiencia)
+	}
+	if got.Rol != "cliente" {
+		t.Errorf("Rol = %q, se esperaba cliente", got.Rol)
+	}
+}
+
+// TestAudiencia_ReaccionEsInterno confirma que reaccion mapea a Interno.
+func TestAudiencia_ReaccionEsInterno(t *testing.T) {
+	if a := audienciaDesdeRol("reaccion"); a != AudienciaInterno {
+		t.Errorf("reaccion debería ser Interno, got %q", a)
+	}
+	if a := audienciaDesdeRol("administrador"); a != AudienciaInterno {
+		t.Errorf("administrador debería ser Interno, got %q", a)
+	}
+}
+
+// revocacionFalsa es un RevocationChecker de prueba.
+type revocacionFalsa struct{ revocadas map[string]bool }
+
+func (r revocacionFalsa) Revocada(ctx context.Context, sesionID string) bool {
+	return r.revocadas[sesionID]
+}
+
+// TestMiddlewareFuncion_FormaDeError verifica que el middleware común responde
+// con la forma {codigo, mensaje} de la plataforma, no con {error}.
+func TestMiddlewareFuncion_FormaDeError(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+
+	protegido := Middleware(v, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil) // sin Authorization
+	rec := httptest.NewRecorder()
+	protegido.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, se esperaba 401", rec.Code)
+	}
+	var cuerpo map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &cuerpo); err != nil {
+		t.Fatalf("cuerpo no es JSON: %v", err)
+	}
+	if cuerpo["codigo"] != "no_autorizado" {
+		t.Errorf("codigo = %q, se esperaba no_autorizado", cuerpo["codigo"])
+	}
+	if cuerpo["mensaje"] == "" {
+		t.Error("el error debería traer un mensaje")
+	}
+}
+
+// TestMiddlewareFuncion_RechazaSesionRevocada verifica la costura de revocación.
+func TestMiddlewareFuncion_RechazaSesionRevocada(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+	tok := firmarToken(t, key, testKid, claimsBase()) // sesion_id = "sesion-1"
+
+	rev := revocacionFalsa{revocadas: map[string]bool{"sesion-1": true}}
+	protegido := Middleware(v, rev)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	protegido.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("una sesión revocada debería dar 401, got %d", rec.Code)
+	}
+}
+
+// TestRefrescoProactivo_RenuevaAntesDeVencer: con refresco proactivo activo y un
+// TTL corto, la caché se renueva en segundo plano aunque nadie verifique, de
+// modo que una verificación posterior NO depende de la gracia.
+func TestRefrescoProactivo_RenuevaAntesDeVencer(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	// TTL de 100ms: el refresco debería dispararse a ~80ms y renovar.
+	v := NewVerifier(srv.URL, testAud, 100*time.Millisecond)
+
+	// Primer fetch para poblar la caché.
+	tok := firmarToken(t, key, testKid, claimsBase())
+	if _, err := v.VerifyToken(context.Background(), tok); err != nil {
+		t.Fatalf("primera verificación: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v.IniciarRefrescoProactivo(ctx)
+
+	// Esperar más de un ciclo de TTL; el refresco proactivo debería haber
+	// renovado la caché al menos una vez.
+	time.Sleep(400 * time.Millisecond)
+
+	v.mu.RLock()
+	expiry := v.cacheExpiry
+	v.mu.RUnlock()
+	if !expiry.After(time.Now()) {
+		t.Error("el refresco proactivo debería mantener la caché vigente")
+	}
+
+	// Y una verificación debe seguir funcionando sin tocar la gracia.
+	if _, err := v.VerifyToken(context.Background(), tok); err != nil {
+		t.Errorf("verificación tras refresco proactivo debería funcionar: %v", err)
 	}
 }

@@ -1,0 +1,40 @@
+# Grafo de arquitectura de AI27 (ADR 17, E0-T6). Única copia: va embebida en el
+# binario de arch-test. Cada repo pf-svc-* la corre en su CI con
+#   go run github.com/AI27-Tech/pf-pkg-platform-go/tools/arch-test@<version>
+#
+# Claves técnicas en inglés; valores de dominio (nombres de servicio) en español
+# (naming-conventions.md). Siete servicios de V1; ingest y procesamiento son V2
+# y no aparecen.
+layers:
+  borde: [bff]
+  dominio: [operacion]
+  catalogo: [catalogos, identidad]
+  soporte: [reportes, mensajeria, realtime]
+
+# Aristas síncronas permitidas = paquetes generados de api-client-go que el
+# consumidor puede importar.
+allowed_edges:
+  bff: [operacion, catalogos, identidad, reportes, mensajeria]
+  operacion: [catalogos, identidad]   # identidad: solo revocación (restricted_edges)
+  reportes: [catalogos, identidad]    # identidad: solo revocación
+  mensajeria: [catalogos, identidad]  # identidad: solo revocación
+  catalogos: [identidad]              # solo revocación (DEC-058)
+  identidad: []
+  realtime: [identidad]               # solo revocación; el resto llega por el bus
+
+# DEC-051 / ADR 26 §4–§5: snapshot al arrancar y consulta en modo degradado.
+# La arista se verifica a nivel de paquete; la restricción a dos operaciones la
+# cumple el puerto del consumidor, que declara solo esos dos métodos (revisión).
+restricted_edges:
+  identidad:
+    operations: [listarRevocadas, obtenerSesion]
+    consumers: [operacion, catalogos, reportes, mensajeria, realtime]  # bff conserva la arista completa
+
+# Paquetes importables por cualquiera; no son aristas.
+shared_packages: [estados, eventos]
+
+# 00-indice.md regla 1 y DEC-050 §2: la raíz de composición importa EXACTAMENTE
+# los cinco módulos que compone.
+composition_root:
+  module: pf-svc-core
+  requires_exactly: [bff, identidad, operacion, catalogos, reportes]

@@ -29,7 +29,7 @@ type Config struct {
 	DatabaseURL string
 	// RedisURL es la cadena de conexión de Redis (ej. "redis://localhost:6379").
 	RedisURL string
-	// JWKSURL es la URL para obtener el JWKS de Cognito y verificar JWT.
+	// JWKSURL es la URL para obtener el JWKS del IdP interno y verificar JWT.
 	JWKSURL string
 	// OtelExporterURL es el endpoint del exportador OTLP HTTP (ej. "http://localhost:4318").
 	OtelExporterURL string

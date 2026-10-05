@@ -1,0 +1,104 @@
+# CI de pf-pkg-platform-go. Corre en las ramas del repo (repo-convention.md).
+name: ci
+
+on:
+  push:
+    branches: [pf-platform-m, pf-platform-d, pf-platform-q]
+  pull_request:
+    branches: [pf-platform-m, pf-platform-d, pf-platform-q]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      # Postgres para las pruebas de integración (aislamiento por schema,
+      # supervivencia de outbox). Necesita privilegios de CREATE ROLE/SCHEMA.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Los repos AI27-Tech/* son privados (handoff §1.1).
+      GOPRIVATE: github.com/AI27-Tech/*
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+
+      # Token para resolver módulos privados de la organización.
+      - name: Configurar acceso a módulos privados
+        if: ${{ env.GH_PAT != '' }}
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config --global url."https://x-access-token:${GH_PAT}@github.com/".insteadOf "https://github.com/"
+
+      - name: Descargar dependencias
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (unitarios + integración)
+        env:
+          # Apunta las pruebas de integración al Postgres del servicio. Las que
+          # requieren BD se saltan si esta variable no está (README).
+          PLATFORM_GO_TEST_DB: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+        run: go test -race ./...
+
+  arch-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+      # Las pruebas de arch-test incluyen los casos negativos (servicio
+      # desconocido, servicio que requiere otro servicio, ciclo).
+      - name: Pruebas de arch-test
+        run: go test ./tools/arch-test/...
+      # Humo: el binario corre sobre este mismo repo (que no es un servicio del
+      # grafo) y debe FALLAR con "módulo desconocido", demostrando que detecta.
+      - name: arch-test detecta módulo fuera del grafo
+        run: |
+          if go run ./tools/arch-test .; then
+            echo "arch-test debería haber fallado sobre un módulo que no es servicio"
+            exit 1
+          fi
+          echo "OK: arch-test rechazó el módulo fuera del grafo"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Build de la plantilla parametrizada contra la raíz de ejemplo. Verifica
+      # que templates/Dockerfile compila con CMD_PATH y el secreto de BuildKit.
+      - name: Build de templates/Dockerfile
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: templates/Dockerfile
+          push: false
+          build-args: |
+            CMD_PATH=./cmd/ejemplo/api
+          secrets: |
+            gh_token=${{ secrets.GH_PAT }}
