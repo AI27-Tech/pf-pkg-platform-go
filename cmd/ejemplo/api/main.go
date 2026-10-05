@@ -5,9 +5,10 @@
 // ordenado sin reimplementar el sustrato (criterio de aceptación E0-T1:
 // "un módulo nuevo se levanta copiando un directorio mínimo").
 //
-// El Dockerfile compila `./cmd/<ROOT>/api`, así que un servicio real crea, por
+// El binario se compila con la plantilla templates/Dockerfile pasando
+// CMD_PATH (p. ej. CMD_PATH=./cmd/core), así que un servicio real crea, por
 // ejemplo, `cmd/core/api/main.go` a imagen de este archivo y registra ahí sus
-// propios módulos (rutas, pools por rol, workers de outbox de E0-T10).
+// propios módulos (rutas, pools por rol, workers de outbox y del bus).
 //
 // Arranque típico:
 //
