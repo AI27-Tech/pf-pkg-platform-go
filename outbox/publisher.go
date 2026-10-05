@@ -7,8 +7,9 @@
 // La fila de outbox lleva la capa de DOMINIO del sobre de eventos —los mismos
 // campos que `Sobre` en pf-pkg-contracts (contracts/events): evento_id, tipo,
 // version, agregado_id, ocurrido_en, sensibilidad—. La capa de transporte
-// (stream_id/epoch/seq de realtime) NO vive aquí (ADR 28). El worker publica a
-// SNS FIFO y, tras el acuse del broker, marca la fila como publicada (ADR 29).
+// (stream_id/epoch/seq de realtime) NO vive aquí (ADR 28). El Relay (ver
+// relay.go) publica por bus.Publisher y, tras el acuse del transporte, marca la
+// fila como publicada (ADR 29).
 package outbox
 
 import (
@@ -46,8 +47,8 @@ type Event struct {
 	// Si es 0, se registra como 1.
 	Version int
 	// AgregadoID es la identidad canónica del agregado del que deriva el orden
-	// (p. ej. el viaje_id para la familia viaje.*). De aquí el worker deriva el
-	// MessageGroupId de SNS FIFO; no existe una clave global (ADR 29).
+	// (p. ej. el viaje_id para la familia viaje.*). De aquí el bus deriva la
+	// clave de orden; no existe una clave global (ADR 29).
 	AgregadoID string
 	// Sensibilidad indica la superficie del bus. Por defecto (vacío) es amplia.
 	Sensibilidad Sensibilidad
@@ -173,8 +174,8 @@ CREATE TABLE IF NOT EXISTS outbox (
   publicado_en  TIMESTAMPTZ,
   creado_en     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- El worker drena por creado_en las filas no publicadas; el orden por agregado
--- lo impone el MessageGroupId de SNS FIFO derivado de agregado_id (ADR 29).
+-- El Relay drena por creado_en las filas no publicadas; el orden por agregado
+-- lo impone el bus a partir de agregado_id (ADR 29).
 CREATE INDEX IF NOT EXISTS outbox_pendientes_idx
   ON outbox (creado_en) WHERE publicado = false;
 `

@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## 2026:10:05 00:00
+
+**Resumen:** Deltas P1–P9 de `01-cimientos-compartidos.md` sobre `pf-pkg-platform-go`: se agregaron las piezas reutilizables de workers y bus de dominio (puerto agnóstico + pruebas de contrato + adaptador en memoria), inbox, outbox.Relay, métricas OTel y helpers de traza, el refactor de `auth` (Audiencia de dominio separada del claim técnico `aud`, Authenticator, middleware común con forma de Error, refresco proactivo del JWKS), la herramienta `arch-test`, la plantilla Docker parametrizada y la CI. El adaptador concreto del broker V1 queda **en espera de ADR 32** (on-premise; propuesta NATS JetStream) y no se construye aquí.
+
+**Cambios:**
+- `worker/`: interfaz `Worker` (Name/Run/Ready) y `RunGroup`, que arranca N workers, registra su readiness en `health.Registry` y espera el drenado al apagar; apagado coordinado si uno falla.
+- `bus/`: puerto agnóstico del bus de dominio (ADR 29) — `Sobre`, `Publisher`, `Subscriber`, `Handler`, `Registry` (lo inyecta el módulo) y `Broadcaster`. Sin transporte, sin dominio. `bus/bustest`: pruebas de contrato (orden por clave de agregado, venenoso→cuarentena antes del acuse, duplicado→un solo efecto, acuse tras commit, separación amplia/restringida, difusión a todas las réplicas). `bus/memory`: adaptador en memoria que pasa `bustest`; solo desarrollo y pruebas.
+- `inbox/`: `InboxDDL` + `Registrar` idempotente por `evento_id` en la tx del efecto; `ErrYaProcesado` distingue duplicado de fallo (ADR 29 §1).
+- `outbox/relay.go`: `Relay` (worker) que drena la outbox del módulo y publica por `bus.Publisher`, marcando `publicado` solo tras el acuse; un fallo de transporte deja la fila pendiente (at-least-once) y detiene el barrido para preservar el orden por agregado.
+- `observability/`: `InitMeterProvider` y `Init` (trazas + métricas con shutdown combinado); `WorkerMetrics` (procesados, fallidos, en cuarentena, pendientes, antigüedad, duración); helpers `Inject`/`Extract` y `IniciarSpanConsumidor`.
+- `auth/`: se separó `Audience` (claim técnico `aud`) de `Audiencia` (dominio `Cliente`|`Interno`, DEC-054, con derivación desde el rol como respaldo); interfaz `Authenticator`, función `Middleware(Authenticator, RevocationChecker)` con la forma `Error` de la plataforma (I3), `ContextWithClaims` exportado, costura opcional de revocación (ADR 26 §3) y refresco proactivo del JWKS antes del TTL con jitter, conservando la gracia de 30 s como respaldo (DEC-056). El verificador no conoce al proveedor: URL y emisor se inyectan.
+- `tools/arch-test/`: `main` + `reglas.yaml` embebido (única copia del grafo, ADR 17/E0-T6) + verificación de las reglas (a)–(e) con `go list -deps`, detección de ciclos y casos negativos en pruebas.
+- `templates/Dockerfile`: plantilla parametrizada por `CMD_PATH` (obligatorio, sin default); se quitaron `ROOT`/`MODULE_PATH`; token privado como secreto de BuildKit. Se eliminó el `Dockerfile` de la raíz.
+- `.github/workflows/ci.yml`: build, vet, test (`-race`) con servicio Postgres y `PLATFORM_GO_TEST_DB`, pruebas de `arch-test` (incluidos negativos) y build de `templates/Dockerfile` contra `cmd/ejemplo/api`.
+- Correcciones de prosa/comentarios a la realidad on-premise (ADR 29/32): se quitaron referencias a Cognito, SNS FIFO y `MessageGroupId` del README, `outbox/publisher.go`, `config/config.go` y el comentario de `cmd/ejemplo/api/main.go`.
+- Dependencias: `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp`, `go.opentelemetry.io/otel/sdk/metric` y `gopkg.in/yaml.v3` como directas.
+
+**Pendiente (reportado, no bloquea este entregable):**
+- `bus/<broker>/` (adaptador del broker V1) y la difusión real de `sesion.revocada` esperan a que ADR 32 elija componente (DEC-062). Aquí solo van el puerto y el doble en memoria.
+- La proyección compartida de revocación (E0-T4) usa la costura de P8; dónde vive queda para 03 y 09.
+
+**Archivos modificados:**
+- `worker/worker.go`, `worker/worker_test.go`
+- `bus/bus.go`, `bus/bustest/bustest.go`, `bus/memory/memory.go`, `bus/memory/memory_test.go`
+- `inbox/inbox.go`
+- `outbox/relay.go`, `outbox/relay_test.go`, `outbox/publisher.go`
+- `observability/metrics.go`, `observability/trace.go`
+- `auth/jwt.go`, `auth/jwt_test.go`
+- `tools/arch-test/main.go`, `tools/arch-test/reglas.go`, `tools/arch-test/reglas.yaml`, `tools/arch-test/verificar.go`, `tools/arch-test/verificar_test.go`
+- `templates/Dockerfile` (nuevo), `Dockerfile` (eliminado)
+- `.github/workflows/ci.yml`
+- `cmd/ejemplo/api/main.go`, `config/config.go`
+- `README.md`, `go.mod`, `go.sum`
+
 ## 2026:09:17 11:16
 
 **Resumen:** Se terminó `platform-go` a la especificación E0-T1: se alineó la outbox con el sobre de contratos, se completó la propagación de OpenTelemetry hasta el evento, se agregó una plantilla `cmd/` copiable y se cubrió la Definición de Terminado con pruebas (aislamiento por schema, supervivencia de outbox, traza HTTP → outbox) más pruebas del verificador JWT.
