@@ -1,7 +1,8 @@
 <!--
-Plantilla de Pull Request de portal-cliente (pf-web-frontend-client).
-Rellena las secciones que apliquen y borra las que no. El objetivo es que
-quien revisa entienda el porqué del cambio y pueda verificarlo sin adivinar.
+Plantilla de Pull Request de pf-pkg-platform-go (plantilla de servicio compartida
+de AI27). Es una librería SIN dominio: no conoce `viaje`, `custodio`, etc. Si un
+cambio empieza a necesitar saber qué es un sustantivo de negocio, no pertenece
+aquí. Rellena lo que aplique y borra el resto.
 -->
 
 ## Resumen
@@ -10,82 +11,57 @@ quien revisa entienda el porqué del cambio y pueda verificarlo sin adivinar.
 
 ## Contexto
 
-<!--
-Enlaza el issue, la decisión abierta o el documento de arquitectura relevante.
-La autoridad vive en docs/arquitectura/ del workspace padre; no la reexpliques,
-enlázala.
--->
-
-- Issue / spec relacionado:
-- Decisión de arquitectura afectada (ADR / decisión abierta del README):
+- Issue / spec / historia técnica (E0-*):
+- ADR / decisión afectada (DEC-xxx):
 
 ## Tipo de cambio
 
-- [ ] Feature
+- [ ] Feature (nuevo paquete o capacidad reutilizable)
 - [ ] Bugfix
 - [ ] Refactor (sin cambio de comportamiento)
-- [ ] Estilos / UI
 - [ ] Documentación
 - [ ] Tooling / build / CI
+- [ ] Release (nuevo tag)
 - [ ] Otro:
 
 ## Cambios
 
-<!-- Lista concreta de lo que cambió. Agrupa por dominio o por capa si ayuda. -->
+<!-- Lista concreta por paquete (worker, bus, inbox, outbox, auth, observability, server, tools/arch-test, ...). -->
 
 -
 
-## Invariantes del cliente
-
-<!--
-Marca solo lo que este PR toca. Si tocas alguna, explica cómo se mantiene.
-Ver README > "Reglas del cliente, y cómo están hechas cumplir".
--->
+## Invariantes de la plataforma
 
 - [ ] No afecta ninguna invariante documentada.
-- [ ] **P4** — un solo parser de tracking para pull y push (`lib/tracking/parseTrackingPayload.ts`).
-- [ ] **P5** — orden y dedupe por secuencia de dominio, no por el `seq` del sobre.
-- [ ] **P10** — el navegador no selecciona canales arbitrarios; el filtrado por audiencia es del servidor.
-- [ ] La ausencia por degradación no se colapsa a `null` (`Fresco<T>` conserva sus tres estados).
-- [ ] El fetch se mantiene en la frontera de la ruta; las `*Section` siguen siendo presentacionales.
+- [ ] **Sin dominio** — ningún nombre de evento, tema, cola, esquema ni rol de negocio en el código; el registro y los nombres se inyectan.
+- [ ] **Puertos agnósticos** — `bus`/`worker`/`inbox` siguen sin conocer el transporte; ningún adaptador de broker concreto ni SDK de AWS (DEC-062).
+- [ ] **`auth`** — el verificador no conoce al proveedor (URL del JWKS y emisor se inyectan); se conserva el fallo cerrado y el refresco proactivo (DEC-056).
+- [ ] **arch-test** — si cambia `reglas.yaml` o el grafo, se actualizan sus pruebas (incluidos los casos negativos).
 
-## Decisiones abiertas
+## Compatibilidad
 
-<!--
-¿Este PR toca alguna de las decisiones abiertas del README? ¿Introduce un supuesto
-nuevo sobre el contrato del backend, la custodia del token, el stream, etc.?
-Si es así, dilo aquí y deja el TODO en su sitio en lugar de resolverlo en silencio.
--->
+<!-- Esta librería la consumen todos los pf-svc-* por versión exacta. -->
 
--
+- [ ] Cambio compatible hacia atrás; o
+- [ ] Cambio incompatible — documentado aquí y reflejado en la versión del tag.
 
 ## Cómo se probó
 
-<!-- Comandos ejecutados y su resultado. No basta con que compile. -->
-
-- [ ] `pnpm run typecheck`
-- [ ] `pnpm run lint`
-- [ ] `pnpm run format:check`
-- [ ] `pnpm run test`
-- [ ] `pnpm run test:e2e`
-- [ ] Verificado a mano en `pnpm run dev:mock` (cliente@demo.ai27 / demo1234)
+- [ ] `go build ./...`
+- [ ] `go vet ./...`
+- [ ] `go test -race ./...`
+- [ ] Pruebas de contrato del puerto (`bus/bustest`) donde aplique
+- [ ] Pruebas de `tools/arch-test` (incluidos los negativos)
+- [ ] `gofmt` limpio
 
 Notas de la verificación:
 
-## Capturas / evidencia
-
-<!-- Para cambios de UI: antes / después. Borra si no aplica. -->
-
 ## CHANGELOG
 
-<!-- El repo exige registrar cada cambio relevante. Ver .kiro/steering/changelog.md -->
-
-- [ ] Agregué la entrada correspondiente en `CHANGELOG.md` (resumen + archivos modificados, entrada más reciente al inicio).
+- [ ] Agregué la entrada en `CHANGELOG.md` (fecha+hora, resumen, cambios y archivos; la más reciente al inicio).
 
 ## Checklist
 
-- [ ] El cambio se limita a la audiencia cliente (nada de `panel-admin` / `Audiencia: Interno`).
-- [ ] No introduje librerías prohibidas (zustand, redux, jotai, swr, framer-motion, next-auth, aws-amplify, Radix, MUI, Chakra).
-- [ ] No importo `lib/api/generated/*` fuera de `src/lib/`.
-- [ ] Comentarios y docstrings en español; sustantivos de dominio en su forma canónica (`viaje`, `bitacora`, `conversacion`, `Audiencia`, `Fresco`, `Sobre`).
-- [ ] No commiteé artefactos generados (`src/routeTree.gen.ts`, `src/lib/api/generated/`).
+- [ ] Identificadores en inglés salvo sustantivos de dominio en español; comentarios, README y commits en español (México).
+- [ ] No commiteé binarios ni artefactos generados.
+- [ ] Sin secretos, DSN ni URLs hardcodeadas.

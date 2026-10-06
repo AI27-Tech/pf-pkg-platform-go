@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026:10:06 12:55
+
+**Resumen:** Se reemplazó la plantilla de Pull Request (venía copiada del frontend) por una adaptada a esta librería compartida.
+
+**Cambios:**
+- Se reescribió `.github/pull_request_template.md`: la anterior era la del portal-cliente (comandos pnpm, invariantes de UI), que no aplica. La nueva es específica de `pf-pkg-platform-go`: librería sin dominio, puertos agnósticos (bus/worker/inbox), `auth` neutral respecto del proveedor, arch-test, compatibilidad hacia atrás y verificación con `go test -race` y `bus/bustest`.
+
+**Archivos modificados:**
+- `.github/pull_request_template.md`
+
 ## 2026:10:05 00:00
 
 **Resumen:** Deltas P1–P9 de `01-cimientos-compartidos.md` sobre `pf-pkg-platform-go`: se agregaron las piezas reutilizables de workers y bus de dominio (puerto agnóstico + pruebas de contrato + adaptador en memoria), inbox, outbox.Relay, métricas OTel y helpers de traza, el refactor de `auth` (Audiencia de dominio separada del claim técnico `aud`, Authenticator, middleware común con forma de Error, refresco proactivo del JWKS), la herramienta `arch-test`, la plantilla Docker parametrizada y la CI. El adaptador concreto del broker V1 queda **en espera de ADR 32** (on-premise; propuesta NATS JetStream) y no se construye aquí.
