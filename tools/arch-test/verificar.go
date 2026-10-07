@@ -56,7 +56,7 @@ func verificar(dir string, r *Reglas) ([]string, error) {
 	}
 
 	// (b)+(c) Imports reales de clientes generados contra las aristas declaradas.
-	importsPorServicio, err := importsDeClientes(dir)
+	importsPorServicio, err := importsDeClientes(dir, r.paquetesCompartidos())
 	if err != nil {
 		return nil, err
 	}
@@ -135,8 +135,10 @@ func requeridosServicio(dir string) ([]string, error) {
 }
 
 // importsDeClientes corre `go list -deps` y devuelve, por servicio destino, los
-// paquetes de cliente generado que el repo importa de verdad.
-func importsDeClientes(dir string) (map[string][]string, error) {
+// paquetes de cliente generado que el repo importa de verdad. Los paquetes
+// compartidos (shared_packages: enum de roles, estados, eventos…) se importan
+// por cualquiera y NO son aristas, así que se excluyen del resultado.
+func importsDeClientes(dir string, compartidos map[string]bool) (map[string][]string, error) {
 	cmd := exec.Command("go", "list", "-deps", "./...")
 	cmd.Dir = dir
 	out, err := cmd.Output()
@@ -157,6 +159,10 @@ func importsDeClientes(dir string) (map[string][]string, error) {
 		}
 		resto := strings.TrimPrefix(pkg, contractsClientPrefix)
 		servicio := strings.SplitN(resto, "/", 2)[0]
+		// Un paquete compartido no es una arista hacia un servicio: se ignora.
+		if compartidos[servicio] {
+			continue
+		}
 		resultado[servicio] = append(resultado[servicio], pkg)
 	}
 	return resultado, nil
