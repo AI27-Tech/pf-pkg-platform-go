@@ -29,8 +29,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Los repos AI27-Tech/* son privados (handoff §1.1).
+      # Los repos AI27-Tech/* son privados (handoff §1.1). GH_PAT a nivel de job
+      # para que el paso de configuración lo vea (un `if` a nivel de paso se
+      # evalúa ANTES de aplicar su env, así que env.GH_PAT ahí estaría vacío).
+      # platform-go hoy no tiene dependencias privadas, pero se deja el acceso
+      # configurado y consistente con los repos pf-svc-* por si las adquiere.
       GOPRIVATE: github.com/AI27-Tech/*
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,13 +44,13 @@ jobs:
           go-version: "1.27"
           cache: true
 
-      # Token para resolver módulos privados de la organización.
+      # Token para resolver módulos privados de la organización. Incondicional:
+      # si GH_PAT está vacío, el insteadOf no estorba a los módulos públicos.
       - name: Configurar acceso a módulos privados
-        if: ${{ env.GH_PAT != '' }}
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          git config --global url."https://x-access-token:${GH_PAT}@github.com/".insteadOf "https://github.com/"
+          if [ -n "${GH_PAT}" ]; then
+            git config --global url."https://x-access-token:${GH_PAT}@github.com/".insteadOf "https://github.com/"
+          fi
 
       - name: Descargar dependencias
         run: go mod download
