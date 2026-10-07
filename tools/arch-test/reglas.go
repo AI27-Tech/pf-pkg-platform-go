@@ -61,3 +61,14 @@ func (r *Reglas) aristasPermitidas(servicio string) map[string]bool {
 	}
 	return m
 }
+
+// paquetesCompartidos devuelve el conjunto de paquetes de api-client-go
+// importables por cualquier servicio (shared_packages). No son aristas: se
+// excluyen de la verificación del grafo.
+func (r *Reglas) paquetesCompartidos() map[string]bool {
+	m := map[string]bool{}
+	for _, p := range r.SharedPackages {
+		m[p] = true
+	}
+	return m
+}

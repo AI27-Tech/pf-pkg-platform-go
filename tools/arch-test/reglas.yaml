@@ -30,8 +30,10 @@ restricted_edges:
     operations: [listarRevocadas, obtenerSesion]
     consumers: [operacion, catalogos, reportes, mensajeria, realtime]  # bff conserva la arista completa
 
-# Paquetes importables por cualquiera; no son aristas.
-shared_packages: [estados, eventos]
+# Paquetes importables por cualquiera; no son aristas. `roles` es el enum
+# canónico de los ocho roles (DEC-053), generado como paquete propio en
+# tracer.3; cualquier servicio que verifique tokens lo importa.
+shared_packages: [estados, eventos, roles]
 
 # 00-indice.md regla 1 y DEC-050 §2: la raíz de composición importa EXACTAMENTE
 # los cinco módulos que compone.
