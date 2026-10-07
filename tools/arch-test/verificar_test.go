@@ -102,6 +102,45 @@ func TestServicioValidoSinImportsPasa(t *testing.T) {
 	}
 }
 
+// TestRolesEsPaqueteCompartido: el enum de roles (DEC-053, generado en tracer.3)
+// debe estar declarado como paquete compartido; si no, arch-test lo tomaría por
+// una arista hacia un servicio "roles" inexistente y marcaría un falso positivo
+// en cualquier módulo que verifique tokens (p. ej. identidad).
+func TestRolesEsPaqueteCompartido(t *testing.T) {
+	compartidos := reglasDePrueba(t).paquetesCompartidos()
+	for _, p := range []string{"estados", "eventos", "roles"} {
+		if !compartidos[p] {
+			t.Errorf("%q debería estar en shared_packages; compartidos = %v", p, compartidos)
+		}
+	}
+}
+
+// TestPaquetesCompartidosNoSonAristas: un import de un paquete compartido no
+// debe producir una violación de arista, mientras que un import de un servicio
+// no declarado sí. Se ejercita la lógica de clasificación directamente, sin
+// depender de `go list`.
+func TestPaquetesCompartidosNoSonAristas(t *testing.T) {
+	r := reglasDePrueba(t)
+	compartidos := r.paquetesCompartidos()
+	permitidas := r.aristasPermitidas("identidad") // identidad es hoja: ninguna
+
+	// Simula lo que importsDeClientes extrae de `go list -deps`: el primer
+	// segmento tras el prefijo del cliente generado.
+	clasificar := func(segmento string) (esArista, esViolacion bool) {
+		if compartidos[segmento] {
+			return false, false // compartido: nunca es arista
+		}
+		return true, !permitidas[segmento]
+	}
+
+	if _, v := clasificar("roles"); v {
+		t.Error("importar el paquete compartido roles no debería ser una violación")
+	}
+	if _, v := clasificar("operacion"); !v {
+		t.Error("identidad (hoja) importando el cliente de operacion debería ser una violación")
+	}
+}
+
 // TestGrafoDeclaradoEsAciclico: el reglas.yaml embebido no debe tener ciclos.
 func TestGrafoDeclaradoEsAciclico(t *testing.T) {
 	if p := verificarAciclico(reglasDePrueba(t)); len(p) != 0 {
