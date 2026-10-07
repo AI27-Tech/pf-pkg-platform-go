@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026:10:05 (hora local)
+
+**Resumen:** Se corrige la compuerta muerta de acceso a módulos privados en el CI. El paso "Configurar acceso a módulos privados" tenía `if: ${{ env.GH_PAT != '' }}`, que se evalúa ANTES de aplicar el `env` del propio paso, así que `env.GH_PAT` siempre estaba vacío y el paso se saltaba siempre. En platform-go era inofensivo (no tiene dependencias privadas), pero era configuración muerta y engañosa, inconsistente con los repos `pf-svc-*`.
+
+**Cambios:**
+- `.github/workflows/ci.yml`: `GH_PAT` y `GOPRIVATE` suben a nivel de job en `build-test`; el paso de configuración de git deja de tener el `if` muerto y corre incondicionalmente (si `GH_PAT` está vacío, el `insteadOf` no estorba a los módulos públicos). Mismo patrón ya aplicado en core/catalogos/etc.
+
+**Verificado:** YAML válido. No cambia el comportamiento observable del CI de platform-go (no tiene dependencias privadas), pero elimina la trampa para cuando las adquiera.
+
+**Archivos modificados:**
+- `.github/workflows/ci.yml`
+
 ## 2026:10:06 12:55
 
 **Resumen:** Se reemplazó la plantilla de Pull Request (venía copiada del frontend) por una adaptada a esta librería compartida.
