@@ -30,26 +30,17 @@ type Adaptador struct {
 // nuevo para no compartir estado.
 type Fabrica func(t *testing.T, reg bus.Registry) Adaptador
 
-// registryFalso acepta una lista blanca de tipos y ordena por AgregadoID.
-type registryFalso struct {
-	permitidos map[string]bool
-}
-
-func nuevoRegistry(tipos ...string) *registryFalso {
-	m := make(map[string]bool, len(tipos))
+// nuevoRegistry construye el Registry REAL (bus.NuevoRegistry) con una lista
+// blanca de tipos, todos en versión 1. Antes había aquí un doble a mano; usar
+// el constructor real hace que toda la batería de contrato ejerza el Registry
+// de producción, no una imitación.
+func nuevoRegistry(tipos ...string) bus.Registry {
+	registrados := make([]bus.TipoRegistrado, 0, len(tipos))
 	for _, t := range tipos {
-		m[clave(t, 1)] = true
+		registrados = append(registrados, bus.TipoRegistrado{Tipo: t, Version: 1})
 	}
-	return &registryFalso{permitidos: m}
+	return bus.NuevoRegistry(registrados)
 }
-
-func clave(tipo string, v int) string { return fmt.Sprintf("%s@%d", tipo, v) }
-
-func (r *registryFalso) Allowed(tipo string, version int) bool {
-	return r.permitidos[clave(tipo, version)]
-}
-
-func (r *registryFalso) OrderingKey(s bus.Sobre) string { return s.AgregadoID }
 
 // Ejecutar corre toda la batería de contrato contra el adaptador dado.
 func Ejecutar(t *testing.T, nueva Fabrica) {
