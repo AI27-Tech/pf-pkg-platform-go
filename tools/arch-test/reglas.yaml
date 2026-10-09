@@ -32,8 +32,12 @@ restricted_edges:
 
 # Paquetes importables por cualquiera; no son aristas. `roles` es el enum
 # canónico de los ocho roles (DEC-053), generado como paquete propio en
-# tracer.3; cualquier servicio que verifique tokens lo importa.
-shared_packages: [estados, eventos, roles]
+# tracer.3; cualquier servicio que verifique tokens lo importa. `registro` es el
+# registro contractual de tipos de evento (productor, consumidores, agregado,
+# sensibilidad); la raíz de composición y los módulos lo importan para construir
+# el bus.Registry (Fase 0 del bus) — es un artefacto compartido del contrato, no
+# un módulo de dominio ni una arista de llamada.
+shared_packages: [estados, eventos, roles, registro]
 
 # 00-indice.md regla 1 y DEC-050 §2: la raíz de composición importa EXACTAMENTE
 # los cinco módulos que compone.
