@@ -160,7 +160,11 @@ type consumidor struct {
 	despertar chan struct{}
 }
 
-func (c *consumidor) Name() string { return c.nombre }
+// Name usa el MISMO esquema que el consumidor durable de NATS
+// ("bus-durable:"+modulo), para que el bus en memoria y el real sean
+// intercambiables en tests y en readiness. Si cambia aquí, cambia en
+// bus/nats/jetstream.go.
+func (c *consumidor) Name() string { return "bus-durable:" + c.nombre }
 
 func (c *consumidor) Ready(ctx context.Context) error { return nil }
 
