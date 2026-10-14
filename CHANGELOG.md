@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026:10:14 (hora local) — nombre de worker durable consistente entre transportes
+
+**Resumen:** El consumidor durable del bus en memoria ahora nombra su worker con el mismo esquema que el de NATS: `bus-durable:<durableName>`. Antes el bus en memoria devolvía solo `<durableName>`, así que un mismo módulo (p. ej. reportes) aparecía en readiness como `worker:reportes` con el bus en memoria y como `worker:bus-durable:reportes` con NATS. Esa discrepancia rompía la paridad de observabilidad y obligaba a los tests a sortear el nombre.
+
+**Cambios:**
+- `bus/memory/memory.go`: `consumidor.Name()` pasa de `c.nombre` a `"bus-durable:" + c.nombre`, igual que `bus/nats/jetstream.go`. Comentario que ata ambos: si cambia en uno, cambia en el otro.
+- `bus/bustest/bustest.go`: nuevo caso de contrato `NombreDurableConPrefijo` en la batería compartida (`Ejecutar`), que afirma `Subscribe("mod-a", …).Name() == "bus-durable:mod-a"`. Al vivir en `bustest`, el contrato se verifica en AMBOS transportes (memoria y NATS) con una sola aserción.
+
+**Verificado:** gofmt limpio, `go vet ./...`, `go build ./...`, `go test ./...` (batería de memoria con el caso nuevo en verde). Batería de NATS con el caso nuevo en verde contra un broker local (`go test -tags nats ./bus/nats/`, NATS 2 por docker). CI sin broker sigue en verde (el paquete `bus/nats` no corre sin el tag).
+
+**Archivos modificados:**
+- `bus/memory/memory.go`
+- `bus/bustest/bustest.go`
+
 ## 2026:10:05 (hora local)
 
 **Resumen:** Se corrige la compuerta muerta de acceso a módulos privados en el CI. El paso "Configurar acceso a módulos privados" tenía `if: ${{ env.GH_PAT != '' }}`, que se evalúa ANTES de aplicar el `env` del propio paso, así que `env.GH_PAT` siempre estaba vacío y el paso se saltaba siempre. En platform-go era inofensivo (no tiene dependencias privadas), pero era configuración muerta y engañosa, inconsistente con los repos `pf-svc-*`.
