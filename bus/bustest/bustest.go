@@ -49,6 +49,24 @@ func Ejecutar(t *testing.T, nueva Fabrica) {
 	t.Run("DuplicadoUnSoloEfecto", func(t *testing.T) { duplicado(t, nueva) })
 	t.Run("AcuseTrasCommit", func(t *testing.T) { acuseTrasCommit(t, nueva) })
 	t.Run("SeparacionAmpliaRestringida", func(t *testing.T) { separacion(t, nueva) })
+	t.Run("NombreDurableConPrefijo", func(t *testing.T) { nombreDurable(t, nueva) })
+}
+
+// nombreDurable: el worker de una suscripción durable se llama
+// "bus-durable:"+durableName, igual en todo transporte. core lo registra en
+// readiness como "worker:"+Name(), así que un nombre inconsistente entre el bus
+// real y el de memoria rompería la paridad de observabilidad.
+func nombreDurable(t *testing.T, nueva Fabrica) {
+	reg := nuevoRegistry("viaje.estado_cambiado")
+	ad := nueva(t, reg)
+	h := func(ctx context.Context, s bus.Sobre) error { return nil }
+	w, err := ad.Subscriber.Subscribe("mod-a", bus.SensibilidadAmplia, nil, h)
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if got := w.Name(); got != "bus-durable:mod-a" {
+		t.Errorf("Name() = %q, se esperaba \"bus-durable:mod-a\"", got)
+	}
 }
 
 func sobre(tipo, agregado, id string, sens bus.Sensibilidad) bus.Sobre {

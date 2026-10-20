@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026:10:19 (hora local) — paquete `migrate`: aplicador de migraciones en dos fases (E0-T7, DEC-096)
+
+**Resumen:** Nuevo paquete `migrate` que aplica las migraciones SQL que cada módulo embebe (`migrations.FS`), respetando el orden entre esquemas y la separación en **dos fases** que la excepción de GRANT de `operacion` obliga (ADR 33): primero el `0001` de cada esquema (estructura: esquema, rol, tablas), luego el resto de cada esquema (grants cruzados y migraciones posteriores). Es la pieza que implementa DEC-096 por el lado de plataforma; no abre conexiones ni elige credenciales.
+
+**Contexto:** los `cmd/` de core y mensajeria tenían un TODO de "aplicar migraciones antes de servir tráfico", pero los `0001` hacen `CREATE SCHEMA`/`CREATE ROLE`, que un rol de app con privilegio mínimo no puede. DEC-096 decidió que esas migraciones de estructura corran como **bootstrap de despliegue** con credencial administrativa, no desde el arranque del servicio (invariante I1). Por eso el aplicador recibe un `ResolverEjecutor` (rol → `Ejecutor`) y nunca abre conexiones: el bootstrap le pasa una conexión administrativa; el servicio nunca porta privilegio de crear schema/rol. Es el mismo trabajo que hoy hace `scripts/gate-g2/entorno.sh` en bash, promovido a un artefacto reutilizable en Go.
+
+**Cambios:**
+- `migrate/migrate.go` (nuevo): tipos `Esquema`, `Modulo`, `Ejecutor`, `ResolverEjecutor` y `Aplicar(ctx, Modulo, ResolverEjecutor)`. `Aplicar` valida por adelantado (archivos presentes, ejecutor por rol) y falla antes de tocar la base si algo falta; luego aplica en dos fases. Sin dependencia externa nueva (solo pgx, ya presente).
+- `migrate/migrate_test.go` (nuevo): orden de dos fases con un módulo multi-esquema, caso de un solo esquema, validación previa que no aplica nada al fallar, rol sin ejecutor, y propagación de error de `Exec`. Con FS falso (`testing/fstest`) y un ejecutor espía; sin Postgres.
+- `migrate/migrate_integration_test.go` (nuevo): aplica contra Postgres real SQL que reproduce el grant CRUZADO (esquema `b/0002` otorga al rol que crea `a/0001`), verifica que el grant quedó y que reaplicar es idempotente. Guardado por `PLATFORM_GO_TEST_DB` (se salta sin DSN).
+
+**Verificado:** `gofmt` limpio, `go vet ./...`, `go build ./...`, `go test ./...` (suite completa del repo en verde). Test de integración en verde contra Postgres 16 local (`PLATFORM_GO_TEST_DB`). `arch-test` del repo en verde.
+
+**Fuera de este cambio (pasos siguientes de E0-T7, en otros repos):** cablear `migrate.Aplicar` como paso de bootstrap de despliegue, retirar los TODO de migraciones de `cmd/core`/`cmd/mensajeria` y de los `cmd/api` standalone, y reusarlo desde el gate. Esos tocan pf-svc-core/pf-svc-mensajeria y consumen una versión publicada de este paquete.
+
+## 2026:10:14 (hora local) — nombre de worker durable consistente entre transportes
+
+**Resumen:** El consumidor durable del bus en memoria ahora nombra su worker con el mismo esquema que el de NATS: `bus-durable:<durableName>`. Antes el bus en memoria devolvía solo `<durableName>`, así que un mismo módulo (p. ej. reportes) aparecía en readiness como `worker:reportes` con el bus en memoria y como `worker:bus-durable:reportes` con NATS. Esa discrepancia rompía la paridad de observabilidad y obligaba a los tests a sortear el nombre.
+
+**Cambios:**
+- `bus/memory/memory.go`: `consumidor.Name()` pasa de `c.nombre` a `"bus-durable:" + c.nombre`, igual que `bus/nats/jetstream.go`. Comentario que ata ambos: si cambia en uno, cambia en el otro.
+- `bus/bustest/bustest.go`: nuevo caso de contrato `NombreDurableConPrefijo` en la batería compartida (`Ejecutar`), que afirma `Subscribe("mod-a", …).Name() == "bus-durable:mod-a"`. Al vivir en `bustest`, el contrato se verifica en AMBOS transportes (memoria y NATS) con una sola aserción.
+
+**Verificado:** gofmt limpio, `go vet ./...`, `go build ./...`, `go test ./...` (batería de memoria con el caso nuevo en verde). Batería de NATS con el caso nuevo en verde contra un broker local (`go test -tags nats ./bus/nats/`, NATS 2 por docker). CI sin broker sigue en verde (el paquete `bus/nats` no corre sin el tag).
+
+**Archivos modificados:**
+- `bus/memory/memory.go`
+- `bus/bustest/bustest.go`
+
 ## 2026:10:05 (hora local)
 
 **Resumen:** Se corrige la compuerta muerta de acceso a módulos privados en el CI. El paso "Configurar acceso a módulos privados" tenía `if: ${{ env.GH_PAT != '' }}`, que se evalúa ANTES de aplicar el `env` del propio paso, así que `env.GH_PAT` siempre estaba vacío y el paso se saltaba siempre. En platform-go era inofensivo (no tiene dependencias privadas), pero era configuración muerta y engañosa, inconsistente con los repos `pf-svc-*`.
