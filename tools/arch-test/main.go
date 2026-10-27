@@ -10,7 +10,7 @@
 //	(b) cada módulo solo importa los clientes generados de sus aristas declaradas;
 //	(c) los imports reales con `go list -deps`;
 //	(d) que el grafo declarado es acíclico;
-//	(e) la regla de pf-svc-core (importa EXACTAMENTE los cinco módulos).
+//	(e) la regla de pf-svc-core (importa EXACTAMENTE los módulos que compone).
 //
 // Un módulo desconocido (ruta que no mapea a un servicio del grafo) falla.
 package main

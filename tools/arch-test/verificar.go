@@ -62,7 +62,7 @@ func verificar(dir string, r *Reglas) ([]string, error) {
 	}
 
 	if esCore {
-		// (e) La raíz importa EXACTAMENTE los cinco módulos declarados.
+		// (e) La raíz importa EXACTAMENTE los módulos declarados que compone.
 		problemas = append(problemas, verificarCore(importsPorServicio, r)...)
 	} else {
 		permitidas := r.aristasPermitidas(servicio)

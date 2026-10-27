@@ -40,7 +40,10 @@ restricted_edges:
 shared_packages: [estados, eventos, roles, registro]
 
 # 00-indice.md regla 1 y DEC-050 §2: la raíz de composición importa EXACTAMENTE
-# los cinco módulos que compone.
+# los módulos que compone. mensajeria entra cuando core lo co-ubica para resolver
+# la arista bff→mensajeria en proceso (E7): el cliente de mensajeria llega al
+# grafo de imports de core a través de bff (su MensajeriaPort), y core ahora sí
+# construye el módulo mensajeria y cablea bff.Deps.Mensajeria.
 composition_root:
   module: pf-svc-core
-  requires_exactly: [bff, identidad, operacion, catalogos, reportes]
+  requires_exactly: [bff, identidad, operacion, catalogos, reportes, mensajeria]
