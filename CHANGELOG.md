@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-10-30 — errores: categoría Prohibido (403) y código de máquina en Conflicto (Ola C, E8-T14)
+
+**Resumen:** la taxonomía gana una categoría `CategoryProhibido` (mapea a 403, `String()` = `"prohibido"`) para el caso "autenticado pero sin facultad", distinto de `NoAutorizado` (401, sin autenticar). Y `PlatformError` gana un campo opcional `Codigo`: un código de máquina más fino que `Category.String()`, para que un conflicto que el cliente necesita distinguir (p. ej. `cierre_anticipado_solo_por_incidencia`) viaje como código estable sin crear una categoría por cada variante de 409.
+
+**Contexto:** antes solo existía `NoAutorizado` (que aplastaba 403 en 401) y el 409 salía siempre con código genérico `"conflicto"`; el detalle quedaba en el mensaje libre. El `bff` tenía un tipo `Prohibido` local para fabricar el 403 en su borde, y `mensajeria` metía cadenas-código en el mensaje del conflicto. Esta ola da a la plataforma la pieza que ambos imitaban. Resuelve A3/B1 de E8-T14 (DEC-111).
+
+**Aditivo, sin regresión:** `CategoryProhibido` se añade al final del enum (no renumera los iota existentes). El campo `Codigo` es opcional: cuando está vacío, el borde HTTP sigue usando `Category.String()` como hoy. Ningún servicio cambia de comportamiento hasta que adopte los constructores nuevos.
+
+**API nueva:**
+- `CategoryProhibido` + `NewProhibido(msg, args...)` → 403 / `"prohibido"`.
+- `NewConflictoCodigo(codigo, msg, args...)` → 409 con `Codigo` específico.
+- `CodigoDe(err) string`: el código que el borde debe emitir (el `Codigo` del error si lo trae, si no `Category.String()`, y `"desconocido"` para un error ajeno). Centraliza la regla para que cada responder no la repita.
+
+**Verificación:** `gofmt`, `go vet`, `go test ./errors/` en verde. Tests nuevos para 403, `NewConflictoCodigo`, `NewProhibido` y `CodigoDe` (tres ramas).
+
 ## 2026:10:19 (hora local) — paquete `migrate`: aplicador de migraciones en dos fases (E0-T7, DEC-096)
 
 **Resumen:** Nuevo paquete `migrate` que aplica las migraciones SQL que cada módulo embebe (`migrations.FS`), respetando el orden entre esquemas y la separación en **dos fases** que la excepción de GRANT de `operacion` obliga (ADR 33): primero el `0001` de cada esquema (estructura: esquema, rol, tablas), luego el resto de cada esquema (grants cruzados y migraciones posteriores). Es la pieza que implementa DEC-096 por el lado de plataforma; no abre conexiones ni elige credenciales.
