@@ -29,6 +29,9 @@ const (
 	CategoryRoto
 	// CategoryRateLimit — demasiadas peticiones.
 	CategoryRateLimit
+	// CategoryProhibido — autenticado pero sin la facultad para esta acción (403).
+	// Distinto de NoAutorizado (401, sin autenticar o sin sesión válida).
+	CategoryProhibido
 )
 
 // PlatformError es el tipo de error canónico de la plataforma.
@@ -36,6 +39,12 @@ type PlatformError struct {
 	Category Category
 	Message  string
 	Err      error // error interno, si existe
+	// Codigo es un código de máquina específico, más fino que Category.String().
+	// Opcional: cuando está vacío, el borde HTTP usa Category.String() como hoy.
+	// Lo rellenan los conflictos que el cliente necesita distinguir (p. ej.
+	// `cierre_anticipado_solo_por_incidencia`), sin crear una categoría por cada
+	// variante de 409.
+	Codigo string
 }
 
 func (e *PlatformError) Error() string {
@@ -66,6 +75,8 @@ func (c Category) HTTPStatus() int {
 		return http.StatusBadGateway
 	case CategoryRateLimit:
 		return http.StatusTooManyRequests
+	case CategoryProhibido:
+		return http.StatusForbidden
 	default:
 		return http.StatusInternalServerError
 	}
@@ -88,6 +99,8 @@ func (c Category) String() string {
 		return "roto"
 	case CategoryRateLimit:
 		return "rate_limit"
+	case CategoryProhibido:
+		return "prohibido"
 	default:
 		return "desconocido"
 	}
@@ -109,6 +122,19 @@ func NewValidacion(msg string, args ...any) *PlatformError {
 
 func NewConflicto(msg string, args ...any) *PlatformError {
 	return &PlatformError{Category: CategoryConflicto, Message: fmt.Sprintf(msg, args...)}
+}
+
+// NewConflictoCodigo es un conflicto (409) con un código de máquina específico
+// que el cliente puede distinguir (p. ej. `cierre_anticipado_solo_por_incidencia`).
+// El borde HTTP emite ese `codigo` en vez del genérico "conflicto".
+func NewConflictoCodigo(codigo, msg string, args ...any) *PlatformError {
+	return &PlatformError{Category: CategoryConflicto, Message: fmt.Sprintf(msg, args...), Codigo: codigo}
+}
+
+// NewProhibido es un 403: el llamador está autenticado pero no tiene la facultad
+// para la acción. Distinto de NewNoAutorizado (401, sin autenticar).
+func NewProhibido(msg string, args ...any) *PlatformError {
+	return &PlatformError{Category: CategoryProhibido, Message: fmt.Sprintf(msg, args...)}
 }
 
 func NewDegradado(msg string, args ...any) *PlatformError {
@@ -135,4 +161,20 @@ func AsCategory(err error) Category {
 		return pe.Category
 	}
 	return CategoryUnknown
+}
+
+// CodigoDe devuelve el código de máquina que el borde HTTP debe emitir: el
+// Codigo específico del PlatformError si lo trae, y si no, el genérico de la
+// categoría (Category.String()). Un error que no es PlatformError cae en el
+// String() de CategoryUnknown ("desconocido"). Centraliza la regla para que
+// cada responder no la repita.
+func CodigoDe(err error) string {
+	var pe *PlatformError
+	if errors.As(err, &pe) {
+		if pe.Codigo != "" {
+			return pe.Codigo
+		}
+		return pe.Category.String()
+	}
+	return CategoryUnknown.String()
 }
