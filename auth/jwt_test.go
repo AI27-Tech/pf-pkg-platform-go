@@ -327,13 +327,96 @@ func TestAudiencia_DerivadaDelRolCliente(t *testing.T) {
 	}
 }
 
-// TestAudiencia_ReaccionEsInterno confirma que reaccion mapea a Interno.
-func TestAudiencia_ReaccionEsInterno(t *testing.T) {
-	if a := audienciaDesdeRol("reaccion"); a != AudienciaInterno {
-		t.Errorf("reaccion debería ser Interno, got %q", a)
+// TestAudiencia_RolesInternosSonInterno: sin claim personalizado, cada uno de
+// los siete roles internos de DEC-053 deriva Audiencia Interno. Pasa por
+// VerifyToken para fijar el camino real, no solo el helper.
+func TestAudiencia_RolesInternosSonInterno(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+
+	internos := []string{"jefe_operativo", "monitorista", "supervisor", "coordinador", "ejecutivo", "reaccion", "administrador"}
+	for _, rol := range internos {
+		t.Run(rol, func(t *testing.T) {
+			claims := claimsBase()
+			claims["rol"] = rol
+			got, err := v.VerifyToken(context.Background(), firmarToken(t, key, testKid, claims))
+			if err != nil {
+				t.Fatalf("verificar: %v", err)
+			}
+			if got.Audiencia != AudienciaInterno {
+				t.Errorf("Audiencia = %q, se esperaba Interno", got.Audiencia)
+			}
+		})
 	}
-	if a := audienciaDesdeRol("administrador"); a != AudienciaInterno {
-		t.Errorf("administrador debería ser Interno, got %q", a)
+}
+
+// TestAudiencia_RolDesconocidoEsInterno fija el comportamiento VIGENTE para un
+// rol no vacío fuera de DEC-053: deriva Interno, porque este paquete no conoce
+// la lista de roles. Pendiente de decisión (ver PR); si se decide rechazarlo,
+// esta prueba cambia a esperar error.
+func TestAudiencia_RolDesconocidoEsInterno(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+
+	claims := claimsBase()
+	claims["rol"] = "rol_inventado"
+	got, err := v.VerifyToken(context.Background(), firmarToken(t, key, testKid, claims))
+	if err != nil {
+		t.Fatalf("verificar: %v", err)
+	}
+	if got.Audiencia != AudienciaInterno {
+		t.Errorf("Audiencia = %q, se esperaba Interno", got.Audiencia)
+	}
+}
+
+// TestVerifyToken_SinRolNiAudienciaSeRechaza: un token bien firmado sin rol y
+// sin claim `audiencia` no debe derivar Interno (DEC-129: Interno no se acota
+// por tenant). El verificador lo rechaza y el middleware responde 401
+// no_autorizado, igual que a un token inválido.
+func TestVerifyToken_SinRolNiAudienciaSeRechaza(t *testing.T) {
+	key := nuevaClave(t)
+	srv, _ := jwksServer(t, testKid, &key.PublicKey)
+	v := NewVerifier(srv.URL, testAud, time.Minute)
+	protegido := Middleware(v, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	casos := []struct {
+		nombre string
+		ajuste func(jwt.MapClaims)
+	}{
+		{"rol ausente", func(c jwt.MapClaims) { delete(c, "rol") }},
+		{"rol vacío", func(c jwt.MapClaims) { c["rol"] = "" }},
+		{"rol no es cadena", func(c jwt.MapClaims) { c["rol"] = []any{"administrador"} }},
+		{"rol ausente y audiencia vacía", func(c jwt.MapClaims) { delete(c, "rol"); c["audiencia"] = "" }},
+	}
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			claims := claimsBase()
+			c.ajuste(claims)
+			tok := firmarToken(t, key, testKid, claims)
+
+			if got, err := v.VerifyToken(context.Background(), tok); err == nil {
+				t.Fatalf("se esperaba rechazo; se obtuvo Audiencia %q", got.Audiencia)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/x", nil)
+			req.Header.Set("Authorization", "Bearer "+tok)
+			rec := httptest.NewRecorder()
+			protegido.ServeHTTP(rec, req)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, se esperaba 401", rec.Code)
+			}
+			var cuerpo map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &cuerpo); err != nil {
+				t.Fatalf("cuerpo no es JSON: %v", err)
+			}
+			if cuerpo["codigo"] != "no_autorizado" {
+				t.Errorf("codigo = %q, se esperaba no_autorizado", cuerpo["codigo"])
+			}
+		})
 	}
 }
 
