@@ -363,10 +363,14 @@ func (v *Verifier) VerifyToken(ctx context.Context, tokenString string) (*Claims
 	}
 	// Audiencia: valor de dominio del claim personalizado. Si el IdP no lo
 	// emitió, se deriva del rol como respaldo (cliente → Cliente; resto → Interno).
+	// Sin claim ni rol se rechaza (fallo cerrado): Interno no se acota por
+	// tenant (DEC-129), así que derivarlo de un rol vacío abriría todos los datos.
 	if a, ok := mapClaims[v.audienciaClaim].(string); ok && a != "" {
 		claims.Audiencia = Audiencia(a)
-	} else {
+	} else if claims.Rol != "" {
 		claims.Audiencia = audienciaDesdeRol(claims.Rol)
+	} else {
+		return nil, fmt.Errorf("auth: token sin rol ni claim %q de audiencia", v.audienciaClaim)
 	}
 	if sid, ok := mapClaims["sesion_id"].(string); ok {
 		claims.SesionID = sid
@@ -377,6 +381,9 @@ func (v *Verifier) VerifyToken(ctx context.Context, tokenString string) (*Claims
 
 // audienciaDesdeRol mapea el rol a la Audiencia de dominio (DEC-054): solo
 // `cliente` es Cliente; los otros siete roles (incluido `reaccion`) son Interno.
+// Recibe un rol no vacío: VerifyToken rechaza antes el token sin rol.
+// shortcut: un rol no vacío pero desconocido también da Interno porque este
+// paquete no conoce los ocho roles de DEC-053; cerrar con lista si se decide.
 func audienciaDesdeRol(rol string) Audiencia {
 	if rol == "cliente" {
 		return AudienciaCliente
