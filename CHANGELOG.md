@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-11-03 15:39 — auth: un token sin rol ni claim `audiencia` se rechaza (fallo cerrado, DEC-129)
+
+**Resumen:** `VerifyToken` ya no deriva Audiencia Interno de un token sin rol. Si el token no trae el claim personalizado `audiencia` y su `rol` falta, está vacío o no es cadena, la verificación falla y el middleware responde 401 `no_autorizado`, igual que a un token inválido.
+
+**Contexto:** `audienciaDesdeRol` mapeaba todo lo que no fuera `cliente` a Interno, incluido el rol vacío. Con DEC-129 la audiencia Interno no se acota por tenant, así que ese token habría leído datos de todos los clientes. Lo reportó el PR #22 de `pf-svc-reportes`.
+
+**Sin cambio:** con claim `audiencia` explícito se usa tal cual; `cliente` → Cliente; los siete roles internos → Interno. Un rol no vacío desconocido sigue dando Interno: este paquete no conoce la lista de roles de DEC-053 (pendiente de decisión).
+
+**Cambios:**
+- `auth/jwt.go`: `VerifyToken` rechaza el token sin claim `audiencia` y sin rol antes de derivar la Audiencia.
+- `auth/jwt_test.go`: prueba de rechazo (rol ausente, vacío, no cadena, y `audiencia` vacía) con 401 `no_autorizado` por el middleware; tabla de los siete roles internos → Interno por `VerifyToken`; rol desconocido → Interno (comportamiento vigente fijado).
+
+**Verificación:** `gofmt` limpio, `go vet ./...`, `go build ./...`, `go test -race ./...`, `go test ./tools/arch-test/...` y humo de arch-test en verde. La prueba de rechazo falla sin el arreglo.
+
 ## 2026-10-30 — errores: categoría Prohibido (403) y código de máquina en Conflicto (Ola C, E8-T14)
 
 **Resumen:** la taxonomía gana una categoría `CategoryProhibido` (mapea a 403, `String()` = `"prohibido"`) para el caso "autenticado pero sin facultad", distinto de `NoAutorizado` (401, sin autenticar). Y `PlatformError` gana un campo opcional `Codigo`: un código de máquina más fino que `Category.String()`, para que un conflicto que el cliente necesita distinguir (p. ej. `cierre_anticipado_solo_por_incidencia`) viaje como código estable sin crear una categoría por cada variante de 409.
