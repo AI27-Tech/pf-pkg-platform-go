@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-11-18 13:07 — arch-test: `listarAlcances` en la arista restringida a `identidad` (DEC-149 #20, #22)
+
+**Resumen:** `reglas.yaml` documenta que `operacion`, `reportes` y `mensajeria` también leen de `identidad` el snapshot de alcance (`listarAlcances`) para reconstruir su proyección de `alcance.cambiado`. Solo cambia la regla escrita: la arista se verifica por paquete y ya estaba permitida, así que ningún consumidor cambia de resultado.
+
 ## 2026-11-03 15:39 — auth: un token sin rol ni claim `audiencia` se rechaza (fallo cerrado, DEC-129)
 
 **Resumen:** `VerifyToken` ya no deriva Audiencia Interno de un token sin rol. Si el token no trae el claim personalizado `audiencia` y su `rol` falta, está vacío o no es cadena, la verificación falla y el middleware responde 401 `no_autorizado`, igual que a un token inválido.
