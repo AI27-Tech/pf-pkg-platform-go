@@ -15,19 +15,23 @@ layers:
 # consumidor puede importar.
 allowed_edges:
   bff: [operacion, catalogos, identidad, reportes, mensajeria]
-  operacion: [catalogos, identidad]   # identidad: solo revocación (restricted_edges)
-  reportes: [catalogos, identidad]    # identidad: solo revocación
-  mensajeria: [catalogos, identidad]  # identidad: solo revocación
+  operacion: [catalogos, identidad]   # identidad: revocación y snapshot de alcance (restricted_edges)
+  reportes: [catalogos, identidad]    # identidad: revocación y snapshot de alcance
+  mensajeria: [catalogos, identidad]  # identidad: revocación y snapshot de alcance
   catalogos: [identidad]              # solo revocación (DEC-058)
   identidad: []
   realtime: [identidad]               # solo revocación; el resto llega por el bus
 
 # DEC-051 / ADR 26 §4–§5: snapshot al arrancar y consulta en modo degradado.
-# La arista se verifica a nivel de paquete; la restricción a dos operaciones la
-# cumple el puerto del consumidor, que declara solo esos dos métodos (revisión).
+# DEC-149 #20 y #22 (tracer.41/.42) suman `listarAlcances`: el snapshot con
+# cursor que reconstruye la proyección de `alcance.cambiado`. Solo lo usan
+# operacion, reportes y mensajeria; catalogos y realtime siguen con las dos de
+# revocación. La arista se verifica a nivel de paquete; la restricción a estas
+# operaciones la cumple el puerto del consumidor, que declara solo esos métodos
+# (revisión).
 restricted_edges:
   identidad:
-    operations: [listarRevocadas, obtenerSesion]
+    operations: [listarRevocadas, obtenerSesion, listarAlcances]
     consumers: [operacion, catalogos, reportes, mensajeria, realtime]  # bff conserva la arista completa
 
 # Paquetes importables por cualquiera; no son aristas. `roles` es el enum
